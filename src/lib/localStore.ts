@@ -4,6 +4,7 @@ import type {
   CheckinRecord,
   ExerciseRecord,
   GoalRecord,
+  PlanItemRecord,
   ProgramExerciseRecord,
   ProgramRecord,
   ProgramWithExercises,
@@ -11,16 +12,21 @@ import type {
   SaveExerciseArgs,
   SaveGoalArgs,
   SaveMeasurementArgs,
+  SavePlanArgs,
   SaveProgramArgs,
   SaveProgramExerciseArgs,
+  SaveSportArgs,
+  SaveStudyArgs,
   SaveWorkoutArgs,
+  SportSessionRecord,
+  StudySessionRecord,
   TrackerBundle,
   WorkoutLogRecord,
 } from "./types";
 import { buildDashboardData } from "./dashboard";
 import { createLocalId } from "./utils";
 
-const LOCAL_STORAGE_KEY = "gym-tracker-browser-data-v2";
+const LOCAL_STORAGE_KEY = "gym-tracker-browser-data-v3";
 
 type LocalStore = {
   checkins: CheckinRecord[];
@@ -30,6 +36,9 @@ type LocalStore = {
   measurements: BodyMeasurementRecord[];
   programs: ProgramRecord[];
   programExercises: ProgramExerciseRecord[];
+  sports: SportSessionRecord[];
+  studies: StudySessionRecord[];
+  plans: PlanItemRecord[];
 };
 
 function emptyStore(): LocalStore {
@@ -41,29 +50,19 @@ function emptyStore(): LocalStore {
     measurements: [],
     programs: [],
     programExercises: [],
+    sports: [],
+    studies: [],
+    plans: [],
   };
 }
 
 function loadStore(): LocalStore {
   if (typeof window === "undefined") return emptyStore();
-  const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
-  if (!raw) {
-    // Migrate old key, if present
-    const legacy = window.localStorage.getItem("gym-tracker-browser-data-v1");
-    if (legacy) {
-      try {
-        const parsed = JSON.parse(legacy) as Partial<LocalStore>;
-        return {
-          ...emptyStore(),
-          checkins: Array.isArray(parsed.checkins) ? parsed.checkins : [],
-          workoutLogs: Array.isArray(parsed.workoutLogs) ? parsed.workoutLogs : [],
-        };
-      } catch {
-        return emptyStore();
-      }
-    }
-    return emptyStore();
-  }
+  const raw =
+    window.localStorage.getItem(LOCAL_STORAGE_KEY) ||
+    window.localStorage.getItem("gym-tracker-browser-data-v2") ||
+    window.localStorage.getItem("gym-tracker-browser-data-v1");
+  if (!raw) return emptyStore();
   try {
     const parsed = JSON.parse(raw) as Partial<LocalStore>;
     return {
@@ -78,6 +77,9 @@ function loadStore(): LocalStore {
       programExercises: Array.isArray(parsed.programExercises)
         ? parsed.programExercises
         : [],
+      sports: Array.isArray(parsed.sports) ? parsed.sports : [],
+      studies: Array.isArray(parsed.studies) ? parsed.studies : [],
+      plans: Array.isArray(parsed.plans) ? parsed.plans : [],
     };
   } catch {
     return emptyStore();
@@ -266,6 +268,69 @@ export function useLocalTracker(selectedDateKey: string): TrackerBundle {
     }));
   }
 
+  async function createSport(args: SaveSportArgs) {
+    const record: SportSessionRecord = {
+      _id: createLocalId("sport"),
+      createdAt: Date.now(),
+      ...args,
+    };
+    setStore((current) => ({ ...current, sports: [...current.sports, record] }));
+    return null;
+  }
+
+  async function removeSport(id: string) {
+    setStore((current) => ({
+      ...current,
+      sports: current.sports.filter((s) => s._id !== id),
+    }));
+  }
+
+  async function createStudy(args: SaveStudyArgs) {
+    const record: StudySessionRecord = {
+      _id: createLocalId("study"),
+      createdAt: Date.now(),
+      ...args,
+    };
+    setStore((current) => ({ ...current, studies: [...current.studies, record] }));
+    return null;
+  }
+
+  async function removeStudy(id: string) {
+    setStore((current) => ({
+      ...current,
+      studies: current.studies.filter((s) => s._id !== id),
+    }));
+  }
+
+  async function createPlan(args: SavePlanArgs) {
+    const now = Date.now();
+    const record: PlanItemRecord = {
+      _id: createLocalId("plan"),
+      completed: false,
+      createdAt: now,
+      updatedAt: now,
+      ...args,
+    };
+    setStore((current) => ({ ...current, plans: [...current.plans, record] }));
+    return null;
+  }
+
+  async function togglePlan(id: string, completed: boolean) {
+    setStore((current) => ({
+      ...current,
+      plans: current.plans.map((p) =>
+        p._id === id ? { ...p, completed, updatedAt: Date.now() } : p,
+      ),
+    }));
+  }
+
+  async function removePlan(id: string) {
+    setStore((current) => ({
+      ...current,
+      plans: current.plans.filter((p) => p._id !== id),
+    }));
+  }
+
   return {
     mode: "browser",
     dashboard,
@@ -280,6 +345,19 @@ export function useLocalTracker(selectedDateKey: string): TrackerBundle {
       b.dateKey.localeCompare(a.dateKey),
     ),
     programs,
+    sports: [...store.sports].sort((a, b) => {
+      if (b.dateKey !== a.dateKey) return b.dateKey.localeCompare(a.dateKey);
+      return b.createdAt - a.createdAt;
+    }),
+    studies: [...store.studies].sort((a, b) => {
+      if (b.dateKey !== a.dateKey) return b.dateKey.localeCompare(a.dateKey);
+      return b.createdAt - a.createdAt;
+    }),
+    plans: [...store.plans].sort((a, b) => {
+      if (a.completed !== b.completed) return a.completed ? 1 : -1;
+      if (b.dateKey !== a.dateKey) return b.dateKey.localeCompare(a.dateKey);
+      return b.createdAt - a.createdAt;
+    }),
     actions: {
       saveCheckin,
       createWorkout,
@@ -295,6 +373,13 @@ export function useLocalTracker(selectedDateKey: string): TrackerBundle {
       removeProgram,
       addProgramExercise,
       removeProgramExercise,
+      createSport,
+      removeSport,
+      createStudy,
+      removeStudy,
+      createPlan,
+      togglePlan,
+      removePlan,
     },
   };
 }

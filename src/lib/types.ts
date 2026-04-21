@@ -220,10 +220,86 @@ export type SaveProgramExerciseArgs = {
   notes?: string;
 };
 
+export type SportIntensity = "light" | "steady" | "hard";
+
+export type SportSessionRecord = {
+  _id: string;
+  dateKey: string;
+  sport: string;
+  durationMinutes: number;
+  distanceKm?: number;
+  avgPaceSecPerKm?: number;
+  elevationM?: number;
+  intensity: SportIntensity;
+  location?: string;
+  notes?: string;
+  createdAt: number;
+};
+
+export type StudySessionRecord = {
+  _id: string;
+  dateKey: string;
+  subject: string;
+  topic?: string;
+  durationMinutes: number;
+  focus: number;
+  pomodoros?: number;
+  notes?: string;
+  createdAt: number;
+};
+
+export type PlanCategory = "task" | "habit" | "milestone";
+export type PlanDomain = "general" | "training" | "study" | "life";
+
+export type PlanItemRecord = {
+  _id: string;
+  dateKey: string;
+  title: string;
+  category: PlanCategory;
+  domain: PlanDomain;
+  completed: boolean;
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type SaveSportArgs = {
+  dateKey: string;
+  sport: string;
+  durationMinutes: number;
+  intensity: SportIntensity;
+  distanceKm?: number;
+  avgPaceSecPerKm?: number;
+  elevationM?: number;
+  location?: string;
+  notes?: string;
+};
+
+export type SaveStudyArgs = {
+  dateKey: string;
+  subject: string;
+  durationMinutes: number;
+  focus: number;
+  topic?: string;
+  pomodoros?: number;
+  notes?: string;
+};
+
+export type SavePlanArgs = {
+  dateKey: string;
+  title: string;
+  category: PlanCategory;
+  domain: PlanDomain;
+  notes?: string;
+};
+
 export type ViewKey =
   | "dashboard"
   | "workouts"
+  | "sports"
+  | "study"
   | "checkins"
+  | "plans"
   | "exercises"
   | "measurements"
   | "goals"
@@ -245,6 +321,13 @@ export type DataActions = {
   removeProgram: (id: string) => Promise<void>;
   addProgramExercise: (args: SaveProgramExerciseArgs) => Promise<unknown>;
   removeProgramExercise: (id: string) => Promise<void>;
+  createSport: (args: SaveSportArgs) => Promise<unknown>;
+  removeSport: (id: string) => Promise<void>;
+  createStudy: (args: SaveStudyArgs) => Promise<unknown>;
+  removeStudy: (id: string) => Promise<void>;
+  createPlan: (args: SavePlanArgs) => Promise<unknown>;
+  togglePlan: (id: string, completed: boolean) => Promise<void>;
+  removePlan: (id: string) => Promise<void>;
 };
 
 export type TrackerBundle = {
@@ -256,5 +339,8 @@ export type TrackerBundle = {
   goals: GoalRecord[];
   measurements: BodyMeasurementRecord[];
   programs: ProgramWithExercises[];
+  sports: SportSessionRecord[];
+  studies: StudySessionRecord[];
+  plans: PlanItemRecord[];
   actions: DataActions;
 };

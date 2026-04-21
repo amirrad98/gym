@@ -177,14 +177,35 @@ button {
   color: var(--ink-mute);
 }
 
+.sidebar-sections {
+  display: grid;
+  gap: 18px;
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.sidebar-section {
+  display: grid;
+  gap: 4px;
+}
+
+.sidebar-section-title {
+  padding: 2px 12px 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  font-weight: 600;
+}
+
 .sidebar-nav {
   list-style: none;
   padding: 0;
   margin: 0;
   display: grid;
   gap: 2px;
-  flex: 1;
-  overflow-y: auto;
 }
 
 .sidebar-link {
@@ -1918,6 +1939,103 @@ input[type="checkbox"] {
   color: var(--accent);
   background: var(--accent-soft);
   font-weight: 600;
+}
+
+/* ============================================================
+   Cross-domain timeline (dashboard)
+   ============================================================ */
+
+.timeline-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 14px 16px;
+}
+
+.timeline-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.timeline-kind-workout {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.timeline-kind-sport {
+  background: var(--lime-soft);
+  color: var(--lime);
+}
+
+.timeline-kind-study {
+  background: rgba(167, 139, 250, 0.14);
+  color: var(--violet);
+}
+
+.timeline-kind-plan {
+  background: var(--warm-soft);
+  color: var(--warm);
+}
+
+.timeline-row.timeline-workout { border-left: 2px solid var(--accent); }
+.timeline-row.timeline-sport { border-left: 2px solid var(--lime); }
+.timeline-row.timeline-study { border-left: 2px solid var(--violet); }
+.timeline-row.timeline-plan { border-left: 2px solid var(--warm); }
+
+.timeline-metric {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink);
+  font-weight: 700;
+  font-feature-settings: "tnum";
+}
+
+/* ============================================================
+   Plans view
+   ============================================================ */
+
+.plan-row {
+  align-items: flex-start;
+}
+
+.plan-row.is-done h3 {
+  text-decoration: line-through;
+  color: var(--ink-mute);
+}
+
+.plan-check {
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  border: 1.5px solid var(--hair-strong);
+  background: var(--surface-3);
+  border-radius: 8px;
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 14px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 160ms var(--ease);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.plan-check:hover {
+  border-color: var(--accent);
+}
+
+.plan-check.is-checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #051814;
 }
 
 /* ============================================================

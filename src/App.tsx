@@ -10,8 +10,11 @@ import { DashboardView } from "./views/DashboardView";
 import { ExercisesView } from "./views/ExercisesView";
 import { GoalsView } from "./views/GoalsView";
 import { MeasurementsView } from "./views/MeasurementsView";
+import { PlansView } from "./views/PlansView";
 import { ProgramsView } from "./views/ProgramsView";
 import { SettingsView } from "./views/SettingsView";
+import { SportsView } from "./views/SportsView";
+import { StudyView } from "./views/StudyView";
 import { WorkoutsView } from "./views/WorkoutsView";
 
 type AppProps = {
@@ -131,8 +134,29 @@ function AppShell({
               setSelectedDateKey={setSelectedDateKey}
             />
           ) : null}
+          {activeView === "sports" ? (
+            <SportsView
+              tracker={tracker}
+              selectedDateKey={selectedDateKey}
+              setSelectedDateKey={setSelectedDateKey}
+            />
+          ) : null}
+          {activeView === "study" ? (
+            <StudyView
+              tracker={tracker}
+              selectedDateKey={selectedDateKey}
+              setSelectedDateKey={setSelectedDateKey}
+            />
+          ) : null}
           {activeView === "checkins" ? (
             <CheckinsView
+              tracker={tracker}
+              selectedDateKey={selectedDateKey}
+              setSelectedDateKey={setSelectedDateKey}
+            />
+          ) : null}
+          {activeView === "plans" ? (
+            <PlansView
               tracker={tracker}
               selectedDateKey={selectedDateKey}
               setSelectedDateKey={setSelectedDateKey}

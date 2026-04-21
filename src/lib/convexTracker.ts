@@ -5,14 +5,20 @@ import type {
   DashboardData,
   ExerciseRecord,
   GoalRecord,
+  PlanItemRecord,
   ProgramWithExercises,
   SaveCheckinArgs,
   SaveExerciseArgs,
   SaveGoalArgs,
   SaveMeasurementArgs,
+  SavePlanArgs,
   SaveProgramArgs,
   SaveProgramExerciseArgs,
+  SaveSportArgs,
+  SaveStudyArgs,
   SaveWorkoutArgs,
+  SportSessionRecord,
+  StudySessionRecord,
   TrackerBundle,
 } from "./types";
 
@@ -31,6 +37,13 @@ export function useConvexTracker(selectedDateKey: string): TrackerBundle | null 
   const programs = useQuery(anyApi.programs.list, {}) as
     | ProgramWithExercises[]
     | undefined;
+  const sports = useQuery(anyApi.sportSessions.list, {}) as
+    | SportSessionRecord[]
+    | undefined;
+  const studies = useQuery(anyApi.studySessions.list, {}) as
+    | StudySessionRecord[]
+    | undefined;
+  const plans = useQuery(anyApi.planItems.list, {}) as PlanItemRecord[] | undefined;
 
   const saveCheckin = useMutation(anyApi.checkins.upsert);
   const createWorkoutLog = useMutation(anyApi.workoutLogs.create);
@@ -46,13 +59,23 @@ export function useConvexTracker(selectedDateKey: string): TrackerBundle | null 
   const removeProgram = useMutation(anyApi.programs.remove);
   const addProgramExercise = useMutation(anyApi.programs.addExercise);
   const removeProgramExercise = useMutation(anyApi.programs.removeExercise);
+  const createSport = useMutation(anyApi.sportSessions.create);
+  const removeSport = useMutation(anyApi.sportSessions.remove);
+  const createStudy = useMutation(anyApi.studySessions.create);
+  const removeStudy = useMutation(anyApi.studySessions.remove);
+  const createPlan = useMutation(anyApi.planItems.create);
+  const togglePlan = useMutation(anyApi.planItems.toggle);
+  const removePlan = useMutation(anyApi.planItems.remove);
 
   if (
     !dashboard ||
     !exercises ||
     !goals ||
     !measurements ||
-    !programs
+    !programs ||
+    !sports ||
+    !studies ||
+    !plans
   ) {
     return null;
   }
@@ -66,6 +89,9 @@ export function useConvexTracker(selectedDateKey: string): TrackerBundle | null 
     goals,
     measurements,
     programs,
+    sports,
+    studies,
+    plans,
     actions: {
       saveCheckin: (args: SaveCheckinArgs) => saveCheckin(args),
       createWorkout: (args: SaveWorkoutArgs) => createWorkoutLog(args),
@@ -95,6 +121,21 @@ export function useConvexTracker(selectedDateKey: string): TrackerBundle | null 
         addProgramExercise({ ...args, programId: args.programId as never }),
       removeProgramExercise: async (id: string) => {
         await removeProgramExercise({ id: id as never });
+      },
+      createSport: (args: SaveSportArgs) => createSport(args),
+      removeSport: async (id: string) => {
+        await removeSport({ id: id as never });
+      },
+      createStudy: (args: SaveStudyArgs) => createStudy(args),
+      removeStudy: async (id: string) => {
+        await removeStudy({ id: id as never });
+      },
+      createPlan: (args: SavePlanArgs) => createPlan(args),
+      togglePlan: async (id: string, completed: boolean) => {
+        await togglePlan({ id: id as never, completed });
+      },
+      removePlan: async (id: string) => {
+        await removePlan({ id: id as never });
       },
     },
   };

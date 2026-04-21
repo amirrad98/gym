@@ -95,4 +95,58 @@ export default defineSchema({
     order: v.number(),
     notes: v.optional(v.string()),
   }).index("by_program", ["programId"]),
+
+  sportSessions: defineTable({
+    dateKey: v.string(),
+    sport: v.string(),
+    durationMinutes: v.number(),
+    distanceKm: v.optional(v.number()),
+    avgPaceSecPerKm: v.optional(v.number()),
+    elevationM: v.optional(v.number()),
+    intensity: v.union(
+      v.literal("light"),
+      v.literal("steady"),
+      v.literal("hard"),
+    ),
+    location: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_dateKey", ["dateKey"])
+    .index("by_sport", ["sport"]),
+
+  studySessions: defineTable({
+    dateKey: v.string(),
+    subject: v.string(),
+    topic: v.optional(v.string()),
+    durationMinutes: v.number(),
+    focus: v.number(), // 1-5
+    pomodoros: v.optional(v.number()),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_dateKey", ["dateKey"])
+    .index("by_subject", ["subject"]),
+
+  planItems: defineTable({
+    dateKey: v.string(),
+    title: v.string(),
+    category: v.union(
+      v.literal("task"),
+      v.literal("habit"),
+      v.literal("milestone"),
+    ),
+    domain: v.union(
+      v.literal("general"),
+      v.literal("training"),
+      v.literal("study"),
+      v.literal("life"),
+    ),
+    completed: v.boolean(),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_dateKey", ["dateKey"])
+    .index("by_completed", ["completed"]),
 });

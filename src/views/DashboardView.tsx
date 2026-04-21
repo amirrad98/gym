@@ -65,6 +65,30 @@ export function DashboardView({
   const recovery = buildRecoveryState(tracker.workoutLogs, selectedDateKey);
   const heatmapHighlights = buildMuscleHighlights(dashboard.muscleGroupBreakdown);
 
+  const sportsToday = tracker.sports.filter((s) => s.dateKey === selectedDateKey);
+  const studiesToday = tracker.studies.filter((s) => s.dateKey === selectedDateKey);
+  const plansToday = tracker.plans.filter((p) => p.dateKey === selectedDateKey);
+
+  const sportMinutesToday = sportsToday.reduce(
+    (sum, s) => sum + s.durationMinutes,
+    0,
+  );
+  const sportSessionsToday = sportsToday.length;
+  const studyMinutesToday = studiesToday.reduce(
+    (sum, s) => sum + s.durationMinutes,
+    0,
+  );
+  const studySessionsToday = studiesToday.length;
+  const openPlansToday = plansToday.filter((p) => !p.completed).length;
+  const completedPlansToday = plansToday.filter((p) => p.completed).length;
+
+  const todayActivity = buildTodayTimeline({
+    logs: dashboard.selectedLogs,
+    sports: sportsToday,
+    studies: studiesToday,
+    plans: plansToday,
+  });
+
   return (
     <div className="view-stack">
       <section className="hero-slab">
@@ -120,26 +144,60 @@ export function DashboardView({
 
       <div className="stat-grid">
         <MetricCard
-          label="Sets today"
+          label="Gym sets"
           value={numberFormatter.format(selectedSummary.totalSets)}
           hint={`${selectedSummary.workoutCount} entries`}
         />
         <MetricCard
-          label="7d volume"
-          value={formatMetricValue(dashboard.weeklySummary.totalVolume, " kg")}
-          hint={`${dashboard.weeklySummary.activeDays} active days`}
+          label="Sport minutes"
+          value={numberFormatter.format(sportMinutesToday)}
+          hint={`${sportSessionsToday} sessions`}
         />
         <MetricCard
-          label="Body weight"
-          value={formatMetricValue(selectedSummary.bodyWeightKg, " kg")}
-          hint="Latest weigh-in"
+          label="Study time"
+          value={formatStudyMinutes(studyMinutesToday)}
+          hint={`${studySessionsToday} blocks`}
         />
         <MetricCard
-          label="7d minutes"
-          value={formatMetricValue(dashboard.weeklySummary.totalMinutes, " min")}
-          hint="Tracked time"
+          label="Plan open"
+          value={numberFormatter.format(openPlansToday)}
+          hint={`${completedPlansToday} done`}
         />
       </div>
+
+      <section className="tool-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow eyebrow-dark">Today · cross-domain</p>
+            <h2>Activity timeline</h2>
+          </div>
+          <span className="status-text">
+            {todayActivity.length} entr{todayActivity.length === 1 ? "y" : "ies"}
+          </span>
+        </div>
+        <div className="log-list no-top-margin">
+          {todayActivity.length === 0 ? (
+            <div className="empty-state">
+              Nothing logged today. Pick a domain from the sidebar to start.
+            </div>
+          ) : (
+            todayActivity.map((entry) => (
+              <article className={`log-row timeline-row timeline-${entry.kind}`} key={entry.id}>
+                <div>
+                  <div className="log-title-row">
+                    <span className={`timeline-kind timeline-kind-${entry.kind}`}>
+                      {entry.kindLabel}
+                    </span>
+                    <h3>{entry.title}</h3>
+                  </div>
+                  <p className="log-meta">{entry.meta}</p>
+                </div>
+                <div className="timeline-metric">{entry.metric}</div>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
 
       <div className="dashboard-grid">
         <section className="insight-panel insight-panel-wide">
@@ -351,6 +409,89 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
       <dd>{value}</dd>
     </div>
   );
+}
+
+function formatStudyMinutes(minutes: number) {
+  if (minutes === 0) return "—";
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+type TimelineEntry = {
+  id: string;
+  kind: "workout" | "sport" | "study" | "plan";
+  kindLabel: string;
+  title: string;
+  meta: string;
+  metric: string;
+  at: number;
+};
+
+function buildTodayTimeline(input: {
+  logs: TrackerBundle["workoutLogs"];
+  sports: TrackerBundle["sports"];
+  studies: TrackerBundle["studies"];
+  plans: TrackerBundle["plans"];
+}): TimelineEntry[] {
+  const entries: TimelineEntry[] = [];
+
+  for (const log of input.logs) {
+    entries.push({
+      id: log._id,
+      kind: "workout",
+      kindLabel: "Gym",
+      title: log.exercise,
+      meta: `${log.muscleGroup} · ${log.sets}×${log.reps}${
+        log.weightKg ? ` · ${log.weightKg} kg` : ""
+      }`,
+      metric: `${log.sets} sets`,
+      at: log.createdAt,
+    });
+  }
+
+  for (const sport of input.sports) {
+    entries.push({
+      id: sport._id,
+      kind: "sport",
+      kindLabel: "Sport",
+      title: sport.sport,
+      meta: `${sport.intensity}${
+        sport.distanceKm ? ` · ${sport.distanceKm} km` : ""
+      }${sport.location ? ` · ${sport.location}` : ""}`,
+      metric: `${sport.durationMinutes} min`,
+      at: sport.createdAt,
+    });
+  }
+
+  for (const study of input.studies) {
+    entries.push({
+      id: study._id,
+      kind: "study",
+      kindLabel: "Study",
+      title: study.subject,
+      meta: `${study.topic ?? "—"} · focus ${study.focus}/5${
+        study.pomodoros ? ` · ${study.pomodoros}p` : ""
+      }`,
+      metric: formatStudyMinutes(study.durationMinutes),
+      at: study.createdAt,
+    });
+  }
+
+  for (const plan of input.plans) {
+    entries.push({
+      id: plan._id,
+      kind: "plan",
+      kindLabel: plan.completed ? "Done" : "Plan",
+      title: plan.title,
+      meta: `${plan.domain} · ${plan.category}`,
+      metric: plan.completed ? "✓" : "·",
+      at: plan.createdAt,
+    });
+  }
+
+  return entries.sort((a, b) => b.at - a.at);
 }
 
 function buildMuscleHighlights(
