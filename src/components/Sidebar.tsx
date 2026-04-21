@@ -61,11 +61,8 @@ export function Sidebar({ activeView, onSelect, mode }: SidebarProps) {
   return (
     <nav className="sidebar">
       <div className="sidebar-brand">
-        <span className="sidebar-brand-mark">DL</span>
-        <span className="sidebar-brand-name">
-          <span className="brand-title">Daily Log</span>
-          <span className="brand-sub">Train · Study · Plan</span>
-        </span>
+        <span className="sidebar-brand-mark">Daily · Log</span>
+        <span className="sidebar-brand-name">Ledger</span>
       </div>
 
       <div className="sidebar-sections">
