@@ -1,4 +1,8 @@
 import { useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { BodyDiagram, type MuscleRegionKey } from "../components/BodyDiagram";
+import { ChipGroup } from "../components/inputs/ChipGroup";
+import { Stepper } from "../components/inputs/Stepper";
+import { WeightPicker } from "../components/inputs/WeightPicker";
 import { PageHeader } from "../components/PageHeader";
 import type { TrackerBundle, WorkoutEffort } from "../lib/types";
 import {
@@ -7,18 +11,16 @@ import {
   formatWeight,
   getDateKey,
   muscleGroupOptions,
-  toOptionalNumber,
   toOptionalString,
-  toRequiredNumber,
 } from "../lib/utils";
 
 type WorkoutFormState = {
   exercise: string;
-  muscleGroup: string;
-  sets: string;
-  reps: string;
-  weightKg: string;
-  durationMinutes: string;
+  muscleGroup: MuscleRegionKey;
+  sets: number;
+  reps: number;
+  weightKg: number | null;
+  durationMinutes: number;
   effort: WorkoutEffort;
   notes: string;
 };
@@ -27,14 +29,25 @@ function defaultForm(): WorkoutFormState {
   return {
     exercise: "",
     muscleGroup: "Chest",
-    sets: "4",
-    reps: "8",
-    weightKg: "",
-    durationMinutes: "",
+    sets: 4,
+    reps: 8,
+    weightKg: null,
+    durationMinutes: 0,
     effort: "steady",
     notes: "",
   };
 }
+
+const muscleOptions = muscleGroupOptions.map((group) => ({
+  value: group as MuscleRegionKey,
+  label: group,
+}));
+
+const effortChipOptions = effortOptions.map((option) => ({
+  value: option.value,
+  label: option.label,
+  accent: option.value,
+})) as Array<{ value: WorkoutEffort; label: string; accent: WorkoutEffort }>;
 
 type WorkoutsViewProps = {
   tracker: TrackerBundle;
@@ -53,6 +66,14 @@ export function WorkoutsView({
 
   const logsForDay = tracker.dashboard.selectedLogs;
 
+  // Highlights for the body picker = "this is what you've chosen" (one region
+  // at full intensity) plus a ghost of today's already-logged groups.
+  const highlights: Partial<Record<MuscleRegionKey, number>> = {};
+  for (const log of logsForDay) {
+    const key = log.muscleGroup as MuscleRegionKey;
+    highlights[key] = Math.min(1, (highlights[key] ?? 0) + 0.35);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
@@ -60,18 +81,18 @@ export function WorkoutsView({
     try {
       const exercise = form.exercise.trim();
       if (!exercise) throw new Error("Exercise is required.");
-      const weightKg = toOptionalNumber(form.weightKg);
-      const durationMinutes = toOptionalNumber(form.durationMinutes);
       const notes = toOptionalString(form.notes);
       await tracker.actions.createWorkout({
         dateKey: selectedDateKey,
         exercise,
         muscleGroup: form.muscleGroup,
-        sets: toRequiredNumber(form.sets, "Sets"),
-        reps: toRequiredNumber(form.reps, "Reps"),
+        sets: form.sets,
+        reps: form.reps,
         effort: form.effort,
-        ...(weightKg !== undefined ? { weightKg } : {}),
-        ...(durationMinutes !== undefined ? { durationMinutes } : {}),
+        ...(form.weightKg !== null ? { weightKg: form.weightKg } : {}),
+        ...(form.durationMinutes > 0
+          ? { durationMinutes: form.durationMinutes }
+          : {}),
         ...(notes ? { notes } : {}),
       });
       setForm((current) => ({
@@ -79,7 +100,7 @@ export function WorkoutsView({
         muscleGroup: current.muscleGroup,
         effort: current.effort,
       }));
-      setStatus("Workout entry logged.");
+      setStatus("Logged");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to save.");
     } finally {
@@ -91,7 +112,7 @@ export function WorkoutsView({
     setStatus(null);
     try {
       await tracker.actions.removeWorkout(id);
-      setStatus("Workout entry removed.");
+      setStatus("Removed");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to remove.");
     }
@@ -101,8 +122,8 @@ export function WorkoutsView({
     <div className="view-stack">
       <PageHeader
         eyebrow="Workout log"
-        title={`Exercises for ${formatShortDate(selectedDateKey)}`}
-        description="Track each lift with sets, reps, weight, and effort."
+        title={formatShortDate(selectedDateKey)}
+        description="Tap a muscle group on the map, then dial in the set."
         actions={
           <>
             <label className="field inline-field">
@@ -129,152 +150,131 @@ export function WorkoutsView({
         <div className="panel-heading">
           <div>
             <p className="eyebrow eyebrow-dark">New entry</p>
-            <h2>Log a lift</h2>
+            <h2>Target · {form.muscleGroup}</h2>
           </div>
           <span className="status-text">{status}</span>
         </div>
 
-        <form className="stacked-form" onSubmit={handleSubmit}>
-          <div className="field-grid two-up">
-            <label className="field">
-              <span className="field-label">Exercise</span>
-              <input
-                list="exercise-library"
-                required
-                placeholder="Incline dumbbell press"
-                value={form.exercise}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, exercise: event.target.value }))
+        <form className="stacked-form workout-builder" onSubmit={handleSubmit}>
+          <div className="workout-builder-grid">
+            {/* Body diagram picker */}
+            <div className="body-picker-wrap">
+              <BodyDiagram
+                selected={form.muscleGroup}
+                highlights={highlights}
+                onSelect={(group) =>
+                  setForm((current) => ({ ...current, muscleGroup: group }))
                 }
+                showLegend
               />
-              <datalist id="exercise-library">
-                {tracker.exercises.map((ex) => (
-                  <option key={ex._id} value={ex.name} />
-                ))}
-              </datalist>
-            </label>
+              <div className="body-picker-note">
+                <span className="eyebrow eyebrow-dark">Tap to switch focus</span>
+                <p>
+                  Ghosted regions show what you&rsquo;ve already hit today.
+                </p>
+              </div>
+            </div>
 
-            <label className="field">
-              <span className="field-label">Focus</span>
-              <select
+            {/* Main controls */}
+            <div className="workout-controls">
+              <label className="field">
+                <span className="field-label">Exercise</span>
+                <input
+                  list="exercise-library"
+                  required
+                  placeholder="Incline dumbbell press"
+                  value={form.exercise}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, exercise: event.target.value }))
+                  }
+                />
+                <datalist id="exercise-library">
+                  {tracker.exercises.map((ex) => (
+                    <option key={ex._id} value={ex.name} />
+                  ))}
+                </datalist>
+              </label>
+
+              <ChipGroup
+                label="Focus (quick pick)"
                 value={form.muscleGroup}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    muscleGroup: event.target.value,
-                  }))
-                }
-              >
-                {muscleGroupOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="field-grid three-up">
-            <label className="field">
-              <span className="field-label">Sets</span>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                required
-                inputMode="numeric"
-                value={form.sets}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, sets: event.target.value }))
+                options={muscleOptions}
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, muscleGroup: value }))
                 }
               />
-            </label>
 
-            <label className="field">
-              <span className="field-label">Reps</span>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                required
-                inputMode="numeric"
-                value={form.reps}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, reps: event.target.value }))
-                }
-              />
-            </label>
+              <div className="field-grid two-up">
+                <Stepper
+                  label="Sets"
+                  value={form.sets}
+                  onChange={(value) =>
+                    setForm((current) => ({ ...current, sets: value }))
+                  }
+                  min={1}
+                  max={20}
+                  presets={[3, 4, 5]}
+                />
+                <Stepper
+                  label="Reps"
+                  value={form.reps}
+                  onChange={(value) =>
+                    setForm((current) => ({ ...current, reps: value }))
+                  }
+                  min={1}
+                  max={50}
+                  presets={[5, 8, 10, 12]}
+                />
+              </div>
 
-            <label className="field">
-              <span className="field-label">Weight (kg)</span>
-              <input
-                type="number"
-                min="0"
-                step="0.5"
-                inputMode="decimal"
-                placeholder="Optional"
+              <WeightPicker
+                label="Weight"
                 value={form.weightKg}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, weightKg: event.target.value }))
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, weightKg: value }))
                 }
               />
-            </label>
+
+              <div className="field-grid two-up">
+                <Stepper
+                  label="Duration"
+                  value={form.durationMinutes}
+                  onChange={(value) =>
+                    setForm((current) => ({ ...current, durationMinutes: value }))
+                  }
+                  min={0}
+                  max={240}
+                  step={5}
+                  unit="min"
+                  presets={[10, 20, 30, 45]}
+                />
+                <ChipGroup
+                  label="Effort"
+                  value={form.effort}
+                  options={effortChipOptions}
+                  onChange={(value) =>
+                    setForm((current) => ({ ...current, effort: value }))
+                  }
+                />
+              </div>
+
+              <label className="field">
+                <span className="field-label">Session notes</span>
+                <textarea
+                  rows={3}
+                  placeholder="Paused reps, straps on final set, left shoulder felt stable."
+                  value={form.notes}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, notes: event.target.value }))
+                  }
+                />
+              </label>
+
+              <button className="primary-button" type="submit" disabled={pending}>
+                <span>{pending ? "Logging..." : "Add workout entry"}</span>
+              </button>
+            </div>
           </div>
-
-          <div className="field-grid two-up">
-            <label className="field">
-              <span className="field-label">Duration (minutes)</span>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                inputMode="numeric"
-                placeholder="15"
-                value={form.durationMinutes}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    durationMinutes: event.target.value,
-                  }))
-                }
-              />
-            </label>
-
-            <label className="field">
-              <span className="field-label">Effort</span>
-              <select
-                value={form.effort}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    effort: event.target.value as WorkoutEffort,
-                  }))
-                }
-              >
-                {effortOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <label className="field">
-            <span className="field-label">Session notes</span>
-            <textarea
-              rows={4}
-              placeholder="Paused reps, straps on final set, left shoulder felt stable."
-              value={form.notes}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, notes: event.target.value }))
-              }
-            />
-          </label>
-
-          <button className="primary-button" type="submit" disabled={pending}>
-            {pending ? "Logging..." : "Add workout entry"}
-          </button>
         </form>
       </section>
 
@@ -282,7 +282,9 @@ export function WorkoutsView({
         <div className="panel-heading">
           <div>
             <p className="eyebrow eyebrow-dark">Today&rsquo;s log</p>
-            <h2>{logsForDay.length} entries</h2>
+            <h2>
+              {logsForDay.length} {logsForDay.length === 1 ? "entry" : "entries"}
+            </h2>
           </div>
         </div>
         <div className="log-list no-top-margin">
@@ -299,8 +301,8 @@ export function WorkoutsView({
                     </span>
                   </div>
                   <p className="log-meta">
-                    {log.muscleGroup} · {log.sets} sets x {log.reps} reps ·{" "}
-                    {formatWeight(log.weightKg)}
+                    <span className="log-focus">{log.muscleGroup}</span>
+                    {log.sets}×{log.reps} · {formatWeight(log.weightKg)}
                     {log.durationMinutes ? ` · ${log.durationMinutes} min` : ""}
                   </p>
                   {log.notes ? <p className="log-notes">{log.notes}</p> : null}

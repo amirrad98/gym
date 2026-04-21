@@ -8,8 +8,12 @@
  * @module
  */
 
+import type * as bodyMeasurements from "../bodyMeasurements.js";
 import type * as checkins from "../checkins.js";
 import type * as dashboard from "../dashboard.js";
+import type * as exercises from "../exercises.js";
+import type * as goals from "../goals.js";
+import type * as programs from "../programs.js";
 import type * as workoutLogs from "../workoutLogs.js";
 
 import type {
@@ -19,8 +23,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  bodyMeasurements: typeof bodyMeasurements;
   checkins: typeof checkins;
   dashboard: typeof dashboard;
+  exercises: typeof exercises;
+  goals: typeof goals;
+  programs: typeof programs;
   workoutLogs: typeof workoutLogs;
 }>;
 

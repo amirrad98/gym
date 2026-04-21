@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import { BodyDiagram, type MuscleRegionKey } from "../components/BodyDiagram";
 import { MetricCard } from "../components/MetricCard";
 import type { DailySummary, TrackerBundle, ViewKey } from "../lib/types";
 import {
@@ -235,27 +236,55 @@ export function DashboardView({
           </div>
         </section>
 
-        <section className="insight-panel">
+        <section className="insight-panel insight-panel-wide">
           <div className="panel-heading">
             <div>
               <p className="eyebrow eyebrow-dark">Focus / 14d</p>
-              <h2>Split</h2>
+              <h2>Muscle map</h2>
             </div>
+            <span className="status-text">
+              {dashboard.muscleGroupBreakdown.reduce(
+                (acc, item) => acc + item.workoutCount,
+                0,
+              )}{" "}
+              entries
+            </span>
           </div>
-          <div className="breakdown-list">
-            {dashboard.muscleGroupBreakdown.length === 0 ? (
-              <div className="empty-state">
-                Log a few workouts to see your split.
+          {dashboard.muscleGroupBreakdown.length === 0 ? (
+            <div className="empty-state">
+              Log a few workouts to see your split.
+            </div>
+          ) : (
+            <div className="muscle-map-grid">
+              <BodyDiagram
+                highlights={buildMuscleHighlights(dashboard.muscleGroupBreakdown)}
+                size="md"
+                showLegend={false}
+              />
+              <div className="breakdown-list">
+                {dashboard.muscleGroupBreakdown.map((item) => {
+                  const max = Math.max(
+                    ...dashboard.muscleGroupBreakdown.map((m) => m.workoutCount),
+                  );
+                  const pct = max > 0 ? (item.workoutCount / max) * 100 : 0;
+                  return (
+                    <div className="breakdown-row" key={item.muscleGroup}>
+                      <span>{item.muscleGroup}</span>
+                      <div className="breakdown-bar">
+                        <div
+                          className="breakdown-bar-fill"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <strong>
+                        {String(item.workoutCount).padStart(2, "0")}
+                      </strong>
+                    </div>
+                  );
+                })}
               </div>
-            ) : (
-              dashboard.muscleGroupBreakdown.map((item) => (
-                <div className="breakdown-row" key={item.muscleGroup}>
-                  <span>{item.muscleGroup}</span>
-                  <strong>{String(item.workoutCount).padStart(2, "0")}</strong>
-                </div>
-              ))
-            )}
-          </div>
+            </div>
+          )}
         </section>
 
         <section className="insight-panel">
@@ -305,4 +334,17 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
       <dd>{value}</dd>
     </div>
   );
+}
+
+function buildMuscleHighlights(
+  breakdown: Array<{ muscleGroup: string; workoutCount: number }>,
+): Partial<Record<MuscleRegionKey, number>> {
+  if (breakdown.length === 0) return {};
+  const max = Math.max(...breakdown.map((item) => item.workoutCount));
+  const highlights: Partial<Record<MuscleRegionKey, number>> = {};
+  for (const item of breakdown) {
+    highlights[item.muscleGroup as MuscleRegionKey] =
+      max > 0 ? item.workoutCount / max : 0;
+  }
+  return highlights;
 }
