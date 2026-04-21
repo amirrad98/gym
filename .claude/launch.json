@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vite-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "vite-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview"],
+      "port": 4173
+    },
+    {
+      "name": "convex-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "convex:dev"],
+      "port": 0
+    },
+    {
+      "name": "convex-self-hosted",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "-f", "docker-compose.convex.yml", "up"],
+      "port": 3210
+    }
+  ]
+}

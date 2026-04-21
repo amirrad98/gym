@@ -47,10 +47,10 @@ function intensity(
 }
 
 function fillFor(value: number) {
-  if (value <= 0) return "rgba(18, 17, 16, 0.06)";
-  // Ramp from soft paper-2 to accent
-  const alpha = 0.15 + value * 0.75;
-  return `rgba(255, 61, 0, ${Math.min(alpha, 0.92)})`;
+  if (value <= 0) return "rgba(255, 255, 255, 0.04)";
+  // Ramp from soft surface to bright accent (mint-cyan)
+  const alpha = 0.2 + value * 0.7;
+  return `rgba(50, 227, 195, ${Math.min(alpha, 0.9)})`;
 }
 
 export function BodyDiagram({
@@ -68,8 +68,8 @@ export function BodyDiagram({
     const isSelected = selected === key;
     const style: CSSProperties = {
       fill: isSelected ? "var(--accent)" : fillFor(value),
-      stroke: isSelected ? "var(--accent-deep)" : "var(--ink)",
-      strokeWidth: isSelected ? 1.4 : 0.8,
+      stroke: isSelected ? "var(--accent)" : "rgba(255, 255, 255, 0.12)",
+      strokeWidth: isSelected ? 1.6 : 0.8,
       cursor: interactive ? "pointer" : "default",
       transition: "fill 200ms ease, stroke 200ms ease",
     };
@@ -123,8 +123,8 @@ export function BodyDiagram({
                L 110 78
                C 118 74 128 62 128 46
                C 128 28 118 10 100 10 Z"
-            fill="var(--paper-2)"
-            stroke="var(--ink)"
+            fill="var(--surface-2)"
+            stroke="rgba(255,255,255,0.12)"
             strokeWidth="1"
           />
 
@@ -208,8 +208,8 @@ export function BodyDiagram({
                L 110 78
                C 118 74 128 62 128 46
                C 128 28 118 10 100 10 Z"
-            fill="var(--paper-2)"
-            stroke="var(--ink)"
+            fill="var(--surface-2)"
+            stroke="rgba(255,255,255,0.12)"
             strokeWidth="1"
           />
 

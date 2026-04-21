@@ -9,6 +9,7 @@ import {
   getDateKey,
   numberFormatter,
   parseDateKey,
+  shiftDateKey,
 } from "../lib/utils";
 
 type DashboardViewProps = {
@@ -33,14 +34,17 @@ function emptySummary(dateKey: string): DailySummary {
   };
 }
 
-const heroDay = new Intl.DateTimeFormat("en-US", { weekday: "short" });
+const heroDay = new Intl.DateTimeFormat("en-US", { weekday: "long" });
 const heroMonth = new Intl.DateTimeFormat("en-US", { month: "short" });
 
-function dayOfYear(dateKey: string) {
-  const date = parseDateKey(dateKey);
-  const start = new Date(date.getFullYear(), 0, 0);
-  return Math.floor((date.getTime() - start.getTime()) / 86_400_000);
-}
+const anatomicalRegions: MuscleRegionKey[] = [
+  "Shoulders",
+  "Chest",
+  "Arms",
+  "Core",
+  "Back",
+  "Legs",
+];
 
 export function DashboardView({
   tracker,
@@ -54,73 +58,53 @@ export function DashboardView({
     emptySummary(dashboard.selectedDateKey);
 
   const date = parseDateKey(selectedDateKey);
-  const weekday = heroDay.format(date).toUpperCase();
-  const monthShort = heroMonth.format(date).toUpperCase();
-  const dayNumber = String(date.getDate()).padStart(2, "0");
-  const year = String(date.getFullYear()).slice(-2);
-  const dayIndex = String(dayOfYear(selectedDateKey)).padStart(3, "0");
+  const weekday = heroDay.format(date);
+  const monthShort = heroMonth.format(date);
+  const dayNumber = date.getDate();
+
+  const recovery = buildRecoveryState(tracker.workoutLogs, selectedDateKey);
+  const heatmapHighlights = buildMuscleHighlights(dashboard.muscleGroupBreakdown);
 
   return (
     <div className="view-stack">
       <section className="hero-slab">
         <div className="hero-main">
           <div className="hero-stamp">
-            <span>Entry № {dayIndex} / 365</span>
+            <span>Today</span>
             <span>{weekday}</span>
           </div>
           <h1 className="hero-title">
-            {monthShort}
-            <br />
-            <em>{dayNumber}</em>
-            <span style={{ color: "rgba(242,237,228,0.35)", fontStyle: "normal" }}>
-              &nbsp;&rsquo;{year}
-            </span>
+            {monthShort} <em>{dayNumber}</em>
           </h1>
           <p className="hero-sub">
             {selectedSummary.totalSets > 0
-              ? `${selectedSummary.workoutCount} ENTRIES · ${numberFormatter.format(selectedSummary.totalSets)} SETS`
-              : "No volume logged"}
+              ? `${selectedSummary.workoutCount} entries · ${numberFormatter.format(selectedSummary.totalSets)} sets`
+              : "No volume logged yet"}
           </p>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              flexWrap: "wrap",
-              marginTop: 36,
-            }}
-          >
-            <label className="field inline-field" style={{ gap: 4 }}>
-              <span
-                className="field-label"
-                style={{ color: "rgba(242,237,228,0.55)" }}
-              >
-                Date
-              </span>
+          <div className="hero-actions">
+            <label className="field inline-field hero-date">
+              <span className="field-label">Date</span>
               <input
                 className="date-picker"
                 type="date"
                 value={selectedDateKey}
                 onChange={(event) => setSelectedDateKey(event.target.value)}
-                style={{
-                  borderBottomColor: "rgba(242,237,228,0.4)",
-                  color: "#f2ede4",
-                  background: "transparent",
-                  padding: "6px 0",
-                }}
               />
             </label>
             <button
               type="button"
               className="secondary-button"
               onClick={() => setSelectedDateKey(getDateKey())}
-              style={{
-                background: "transparent",
-                borderColor: "rgba(242,237,228,0.35)",
-                color: "#f2ede4",
-              }}
             >
-              Jump · Today
+              Jump to today
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => goToView("workouts")}
+            >
+              Log workout →
             </button>
           </div>
         </div>
@@ -136,32 +120,79 @@ export function DashboardView({
 
       <div className="stat-grid">
         <MetricCard
-          label="Sets / today"
+          label="Sets today"
           value={numberFormatter.format(selectedSummary.totalSets)}
           hint={`${selectedSummary.workoutCount} entries`}
         />
         <MetricCard
-          label="Volume / 7d"
-          value={formatMetricValue(dashboard.weeklySummary.totalVolume, "")}
-          hint={`${dashboard.weeklySummary.activeDays} active · kg`}
+          label="7d volume"
+          value={formatMetricValue(dashboard.weeklySummary.totalVolume, " kg")}
+          hint={`${dashboard.weeklySummary.activeDays} active days`}
         />
         <MetricCard
           label="Body weight"
-          value={formatMetricValue(selectedSummary.bodyWeightKg, "")}
-          hint="kg · weigh-in"
+          value={formatMetricValue(selectedSummary.bodyWeightKg, " kg")}
+          hint="Latest weigh-in"
         />
         <MetricCard
-          label="Minutes / 7d"
-          value={formatMetricValue(dashboard.weeklySummary.totalMinutes, "")}
-          hint="tracked time"
+          label="7d minutes"
+          value={formatMetricValue(dashboard.weeklySummary.totalMinutes, " min")}
+          hint="Tracked time"
         />
       </div>
 
       <div className="dashboard-grid">
+        <section className="insight-panel insight-panel-wide">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow eyebrow-dark">Muscle recovery</p>
+              <h2>Readiness</h2>
+            </div>
+            <span className="status-text">3-day window</span>
+          </div>
+          <div className="recovery-panel">
+            <BodyDiagram
+              highlights={heatmapHighlights}
+              size="md"
+              showLegend={false}
+            />
+            <div className="recovery-list">
+              {anatomicalRegions.map((region) => {
+                const state = recovery[region];
+                return (
+                  <div className="recovery-row" key={region}>
+                    <span
+                      className={`recovery-dot is-${state.status}`}
+                      aria-hidden
+                    />
+                    <div>
+                      <div className="recovery-name">{region}</div>
+                      <div className="recovery-sub">
+                        {state.status === "ready"
+                          ? "Fresh — ready to train"
+                          : state.status === "moderate"
+                            ? `Trained ${state.daysSince}d ago`
+                            : state.status === "worked"
+                              ? "Worked today"
+                              : "Not in rotation"}
+                      </div>
+                    </div>
+                    <span className="recovery-count">
+                      {state.recentCount > 0
+                        ? `${state.recentCount}×`
+                        : "—"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
         <section className="insight-panel">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow eyebrow-dark">Day / Summary</p>
+              <p className="eyebrow eyebrow-dark">Day summary</p>
               <h2>Snapshot</h2>
             </div>
             <button
@@ -202,7 +233,7 @@ export function DashboardView({
           <div className="panel-heading">
             <div>
               <p className="eyebrow eyebrow-dark">Consistency</p>
-              <h2>Recent</h2>
+              <h2>Recent days</h2>
             </div>
           </div>
           <div className="history-list">
@@ -236,53 +267,37 @@ export function DashboardView({
           </div>
         </section>
 
-        <section className="insight-panel insight-panel-wide">
+        <section className="insight-panel">
           <div className="panel-heading">
             <div>
               <p className="eyebrow eyebrow-dark">Focus / 14d</p>
-              <h2>Muscle map</h2>
+              <h2>Volume split</h2>
             </div>
-            <span className="status-text">
-              {dashboard.muscleGroupBreakdown.reduce(
-                (acc, item) => acc + item.workoutCount,
-                0,
-              )}{" "}
-              entries
-            </span>
           </div>
           {dashboard.muscleGroupBreakdown.length === 0 ? (
             <div className="empty-state">
               Log a few workouts to see your split.
             </div>
           ) : (
-            <div className="muscle-map-grid">
-              <BodyDiagram
-                highlights={buildMuscleHighlights(dashboard.muscleGroupBreakdown)}
-                size="md"
-                showLegend={false}
-              />
-              <div className="breakdown-list">
-                {dashboard.muscleGroupBreakdown.map((item) => {
-                  const max = Math.max(
-                    ...dashboard.muscleGroupBreakdown.map((m) => m.workoutCount),
-                  );
-                  const pct = max > 0 ? (item.workoutCount / max) * 100 : 0;
-                  return (
-                    <div className="breakdown-row" key={item.muscleGroup}>
-                      <span>{item.muscleGroup}</span>
-                      <div className="breakdown-bar">
-                        <div
-                          className="breakdown-bar-fill"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                      <strong>
-                        {String(item.workoutCount).padStart(2, "0")}
-                      </strong>
+            <div className="breakdown-list">
+              {dashboard.muscleGroupBreakdown.map((item) => {
+                const max = Math.max(
+                  ...dashboard.muscleGroupBreakdown.map((m) => m.workoutCount),
+                );
+                const pct = max > 0 ? (item.workoutCount / max) * 100 : 0;
+                return (
+                  <div className="breakdown-row" key={item.muscleGroup}>
+                    <span>{item.muscleGroup}</span>
+                    <div className="breakdown-bar">
+                      <div
+                        className="breakdown-bar-fill"
+                        style={{ width: `${pct}%` }}
+                      />
                     </div>
-                  );
-                })}
-              </div>
+                    <strong>{item.workoutCount}</strong>
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>
@@ -311,11 +326,13 @@ export function DashboardView({
                 <article className="highlight-row" key={item.exercise}>
                   <div>
                     <h3>{item.exercise}</h3>
-                    <p>{item.muscleGroup}</p>
+                    <p>
+                      <span className="log-focus">{item.muscleGroup}</span>
+                      {item.totalSets} sets total
+                    </p>
                   </div>
                   <div className="highlight-metrics">
                     <strong>{formatWeight(item.bestWeightKg)}</strong>
-                    <span>{item.totalSets} sets total</span>
                   </div>
                 </article>
               ))
@@ -347,4 +364,53 @@ function buildMuscleHighlights(
       max > 0 ? item.workoutCount / max : 0;
   }
   return highlights;
+}
+
+type RecoveryStatus = "ready" | "moderate" | "worked" | "dormant";
+
+type RecoveryInfo = {
+  status: RecoveryStatus;
+  daysSince: number | null;
+  recentCount: number;
+};
+
+function buildRecoveryState(
+  logs: Array<{ dateKey: string; muscleGroup: string }>,
+  selectedDateKey: string,
+): Record<MuscleRegionKey, RecoveryInfo> {
+  const result = {} as Record<MuscleRegionKey, RecoveryInfo>;
+  const windowKeys = Array.from({ length: 7 }, (_, offset) =>
+    shiftDateKey(selectedDateKey, -offset),
+  );
+
+  for (const region of anatomicalRegions) {
+    const relevant = logs.filter(
+      (log) =>
+        log.muscleGroup === region && windowKeys.includes(log.dateKey),
+    );
+    const recentCount = relevant.length;
+
+    if (recentCount === 0) {
+      result[region] = { status: "dormant", daysSince: null, recentCount: 0 };
+      continue;
+    }
+
+    // Earliest offset in the 7-day window where we trained this region
+    let minOffset = Infinity;
+    for (const log of relevant) {
+      const offset = windowKeys.indexOf(log.dateKey);
+      if (offset !== -1 && offset < minOffset) minOffset = offset;
+    }
+    const daysSince = minOffset === Infinity ? null : minOffset;
+
+    let status: RecoveryStatus;
+    if (daysSince === 0) status = "worked";
+    else if (daysSince !== null && daysSince <= 1) status = "worked";
+    else if (daysSince !== null && daysSince <= 3) status = "moderate";
+    else status = "ready";
+
+    result[region] = { status, daysSince, recentCount };
+  }
+
+  return result;
 }

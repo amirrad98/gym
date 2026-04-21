@@ -26,8 +26,11 @@ export function Sidebar({ activeView, onSelect, mode }: SidebarProps) {
   return (
     <nav className="sidebar">
       <div className="sidebar-brand">
-        <span className="sidebar-brand-mark">Training · Log</span>
-        <span className="sidebar-brand-name">Ledger</span>
+        <span className="sidebar-brand-mark">GT</span>
+        <span className="sidebar-brand-name">
+          <span className="brand-title">Gym Training</span>
+          <span className="brand-sub">Daily log</span>
+        </span>
       </div>
 
       <ul className="sidebar-nav">
@@ -53,11 +56,11 @@ export function Sidebar({ activeView, onSelect, mode }: SidebarProps) {
       <div className="sidebar-mode">
         <span className={`mode-dot mode-${mode}`} />
         <div>
-          <strong>{mode === "convex" ? "Live / Synced" : "Local / Browser"}</strong>
+          <strong>{mode === "convex" ? "Live sync" : "Local only"}</strong>
           <p>
             {mode === "convex"
-              ? "Entries stream to Convex."
-              : "Entries stay on this device."}
+              ? "Streaming to Convex"
+              : "Data stays on device"}
           </p>
         </div>
       </div>
