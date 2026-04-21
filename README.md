@@ -2,6 +2,8 @@
 
 A Vite + React gym tracking app with a Convex backend for daily check-ins, workout entries, streaks, and recent-progress summaries.
 
+If `VITE_CONVEX_URL` is not set, the app automatically falls back to browser storage so a static deployment can still be used without a public backend.
+
 ## What is built
 
 - Daily check-in form for sleep, energy, mood, soreness, hydration, body weight, and notes

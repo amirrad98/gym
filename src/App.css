@@ -58,6 +58,27 @@
   justify-items: start;
 }
 
+.mode-panel {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(243, 245, 241, 0.12);
+  border: 1px solid rgba(243, 245, 241, 0.16);
+}
+
+.mode-panel strong {
+  display: block;
+  margin: 0 0 4px;
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.mode-panel p {
+  margin: 0;
+  color: rgba(244, 248, 242, 0.76);
+  font-size: 13px;
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -174,6 +195,10 @@
 .field-label {
   font-size: 14px;
   color: #31443a;
+}
+
+.field-label-light {
+  color: rgba(244, 248, 242, 0.84);
 }
 
 .field-hint {

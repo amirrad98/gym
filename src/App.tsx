@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties, Dispatch, FormEvent, SetStateAction } from "react";
 import { anyApi } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
 import "./App.css";
@@ -8,6 +8,7 @@ type AppProps = {
   convexReady: boolean;
 };
 
+type TrackerMode = "convex" | "browser";
 type WorkoutEffort = "light" | "steady" | "hard";
 
 type CheckinFormState = {
@@ -34,6 +35,7 @@ type WorkoutFormState = {
 
 type CheckinRecord = {
   _id: string;
+  dateKey: string;
   bodyWeightKg?: number;
   sleepHours: number;
   energy: number;
@@ -42,10 +44,13 @@ type CheckinRecord = {
   hydrationLiters?: number;
   completedWorkout: boolean;
   notes?: string;
+  createdAt?: number;
+  updatedAt?: number;
 };
 
 type WorkoutLogRecord = {
   _id: string;
+  dateKey: string;
   exercise: string;
   muscleGroup: string;
   sets: number;
@@ -112,6 +117,37 @@ type SaveCheckinArgs = {
   notes?: string;
 };
 
+type SaveWorkoutArgs = {
+  dateKey: string;
+  exercise: string;
+  muscleGroup: string;
+  sets: number;
+  reps: number;
+  effort: WorkoutEffort;
+  weightKg?: number;
+  durationMinutes?: number;
+  notes?: string;
+};
+
+type LocalTrackerStore = {
+  checkins: CheckinRecord[];
+  workoutLogs: WorkoutLogRecord[];
+};
+
+type DashboardLayoutProps = {
+  mode: TrackerMode;
+  selectedDateKey: string;
+  setSelectedDateKey: Dispatch<SetStateAction<string>>;
+  dashboard: DashboardData;
+  workoutForm: WorkoutFormState;
+  setWorkoutForm: Dispatch<SetStateAction<WorkoutFormState>>;
+  workoutStatus: string | null;
+  workoutPending: boolean;
+  onWorkoutSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onDeleteWorkout: (logId: string) => Promise<void>;
+  onCheckinSave: (args: SaveCheckinArgs) => Promise<unknown>;
+};
+
 const checkinSliders = [
   {
     key: "energy",
@@ -148,9 +184,9 @@ const effortOptions: Array<{ value: WorkoutEffort; label: string }> = [
   { value: "hard", label: "Hard" },
 ];
 
-const bannerStyle = {
-  backgroundImage:
-    "linear-gradient(110deg, rgba(14, 18, 15, 0.9) 15%, rgba(14, 18, 15, 0.48) 52%, rgba(14, 18, 15, 0.88) 100%), url('/gym-banner.jpg')",
+const gymBannerUrl = `${import.meta.env.BASE_URL}gym-banner.jpg`;
+const bannerStyle: CSSProperties = {
+  backgroundImage: `linear-gradient(110deg, rgba(14, 18, 15, 0.9) 15%, rgba(14, 18, 15, 0.48) 52%, rgba(14, 18, 15, 0.88) 100%), url('${gymBannerUrl}')`,
 };
 
 const numberFormatter = new Intl.NumberFormat("en-US");
@@ -164,6 +200,7 @@ const longDateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "long",
   day: "numeric",
 });
+const LOCAL_STORAGE_KEY = "gym-tracker-browser-data-v1";
 
 function createDefaultCheckinState(): CheckinFormState {
   return {
@@ -223,6 +260,12 @@ function parseDateKey(dateKey: string) {
   return new Date(year, month - 1, day);
 }
 
+function shiftDateKey(dateKey: string, offset: number) {
+  const shifted = parseDateKey(dateKey);
+  shifted.setDate(shifted.getDate() + offset);
+  return getDateKey(shifted);
+}
+
 function formatLongDate(dateKey: string) {
   return longDateFormatter.format(parseDateKey(dateKey));
 }
@@ -273,88 +316,200 @@ function toOptionalString(rawValue: string) {
   return trimmed ? trimmed : undefined;
 }
 
-function App({ convexReady }: AppProps) {
-  if (!convexReady) {
-    return <BackendSetup />;
+function createLocalId(prefix: "checkin" | "log") {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function volumeForLog(log: {
+  sets: number;
+  reps: number;
+  weightKg?: number;
+}) {
+  return log.weightKg ? log.weightKg * log.sets * log.reps : 0;
+}
+
+function ensureSummary(map: Map<string, DailySummary>, dateKey: string) {
+  const existing = map.get(dateKey);
+
+  if (existing) {
+    return existing;
   }
 
-  return <GymTracker />;
+  const next: DailySummary = {
+    dateKey,
+    totalSets: 0,
+    totalReps: 0,
+    totalVolume: 0,
+    totalMinutes: 0,
+    workoutCount: 0,
+    completedWorkout: false,
+    energy: null,
+    mood: null,
+    bodyWeightKg: null,
+  };
+
+  map.set(dateKey, next);
+  return next;
 }
 
-function BackendSetup() {
-  return (
-    <div className="page-shell">
-      <section className="overview-band setup-band" style={bannerStyle}>
-        <div className="section-inner">
-          <div className="overview-copy">
-            <p className="eyebrow">Gym log</p>
-            <h1>Track daily training without wiring local state together by hand.</h1>
-            <p className="overview-text">
-              The UI is ready. Add a Convex deployment URL and the tracker will
-              start persisting check-ins and workout logs immediately.
-            </p>
-          </div>
-        </div>
-      </section>
+function buildDashboardData(
+  selectedDateKey: string,
+  checkins: CheckinRecord[],
+  workoutLogs: WorkoutLogRecord[],
+): DashboardData {
+  const selectedLogs = workoutLogs
+    .filter((log) => log.dateKey === selectedDateKey)
+    .sort((left, right) => right.createdAt - left.createdAt);
 
-      <main className="section-inner setup-layout">
-        <section className="tool-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">Hosted Convex</p>
-              <h2>Fastest path</h2>
-            </div>
-          </div>
-          <ol className="setup-steps">
-            <li>Run <code>npm install</code>.</li>
-            <li>Run <code>npm install convex</code>.</li>
-            <li>Run <code>npx convex dev</code> and let Convex create a dev deployment.</li>
-            <li>
-              Add <code>VITE_CONVEX_URL=&lt;your deployment url&gt;</code> to
-              <code> .env.local</code>.
-            </li>
-            <li>Start the app with <code>npm run dev</code>.</li>
-          </ol>
-        </section>
+  const selectedCheckin =
+    checkins.find((checkin) => checkin.dateKey === selectedDateKey) ?? null;
 
-        <section className="tool-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">OrbStack Option</p>
-              <h2>Self-hosted Convex</h2>
-            </div>
-          </div>
-          <ol className="setup-steps">
-            <li>
-              Start the bundled container with
-              <code> docker compose -f docker-compose.convex.yml up -d</code>.
-            </li>
-            <li>
-              Generate an admin key with
-              <code>
-                {" "}
-                docker compose -f docker-compose.convex.yml exec backend
-                ./generate_admin_key.sh
-              </code>
-              .
-            </li>
-            <li>
-              Add <code>VITE_CONVEX_URL=http://127.0.0.1:3210</code> to
-              <code> .env.local</code>.
-            </li>
-            <li>
-              Add <code>CONVEX_SELF_HOSTED_URL</code> and
-              <code> CONVEX_SELF_HOSTED_ADMIN_KEY</code> to the same file if
-              you want CLI push/code updates against the container.
-            </li>
-          </ol>
-        </section>
-      </main>
-    </div>
+  const summaryByDate = new Map<string, DailySummary>();
+
+  for (const checkin of checkins) {
+    const summary = ensureSummary(summaryByDate, checkin.dateKey);
+    summary.completedWorkout = summary.completedWorkout || checkin.completedWorkout;
+    summary.energy = checkin.energy;
+    summary.mood = checkin.mood;
+    summary.bodyWeightKg = checkin.bodyWeightKg ?? null;
+  }
+
+  for (const log of workoutLogs) {
+    const summary = ensureSummary(summaryByDate, log.dateKey);
+    summary.totalSets += log.sets;
+    summary.totalReps += log.sets * log.reps;
+    summary.totalVolume += volumeForLog(log);
+    summary.totalMinutes += log.durationMinutes ?? 0;
+    summary.workoutCount += 1;
+    summary.completedWorkout = true;
+  }
+
+  const recentDays = [...summaryByDate.values()]
+    .sort((left, right) => right.dateKey.localeCompare(left.dateKey))
+    .slice(0, 8);
+
+  const weekKeys = Array.from({ length: 7 }, (_, offset) =>
+    shiftDateKey(selectedDateKey, -offset),
   );
+
+  const weeklySummary = weekKeys.reduce(
+    (summary, dateKey) => {
+      const day = summaryByDate.get(dateKey);
+
+      if (!day) {
+        return summary;
+      }
+
+      return {
+        activeDays:
+          summary.activeDays + (day.completedWorkout || day.totalSets > 0 ? 1 : 0),
+        totalSets: summary.totalSets + day.totalSets,
+        totalVolume: summary.totalVolume + day.totalVolume,
+        totalMinutes: summary.totalMinutes + day.totalMinutes,
+      };
+    },
+    {
+      activeDays: 0,
+      totalSets: 0,
+      totalVolume: 0,
+      totalMinutes: 0,
+    },
+  );
+
+  const activeDates = new Set(
+    [...summaryByDate.values()]
+      .filter((day) => day.completedWorkout || day.totalSets > 0)
+      .map((day) => day.dateKey),
+  );
+
+  let streak = 0;
+  for (let cursor = selectedDateKey; activeDates.has(cursor); cursor = shiftDateKey(cursor, -1)) {
+    streak += 1;
+  }
+
+  const recentWindowKeys = new Set(
+    Array.from({ length: 14 }, (_, offset) => shiftDateKey(selectedDateKey, -offset)),
+  );
+  const muscleGroupMap = new Map<string, number>();
+  const highlightMap = new Map<string, ExerciseHighlight>();
+
+  for (const log of workoutLogs) {
+    if (recentWindowKeys.has(log.dateKey)) {
+      muscleGroupMap.set(
+        log.muscleGroup,
+        (muscleGroupMap.get(log.muscleGroup) ?? 0) + 1,
+      );
+    }
+
+    const existing = highlightMap.get(log.exercise);
+    if (existing) {
+      existing.bestWeightKg = Math.max(
+        existing.bestWeightKg ?? 0,
+        log.weightKg ?? 0,
+      ) || null;
+      existing.totalSets += log.sets;
+      existing.totalVolume += volumeForLog(log);
+      existing.lastLoggedAt = Math.max(existing.lastLoggedAt, log.createdAt);
+    } else {
+      highlightMap.set(log.exercise, {
+        exercise: log.exercise,
+        muscleGroup: log.muscleGroup,
+        bestWeightKg: log.weightKg ?? null,
+        totalSets: log.sets,
+        totalVolume: volumeForLog(log),
+        lastLoggedAt: log.createdAt,
+      });
+    }
+  }
+
+  const muscleGroupBreakdown = [...muscleGroupMap.entries()]
+    .map(([muscleGroup, workoutCount]) => ({ muscleGroup, workoutCount }))
+    .sort((left, right) => right.workoutCount - left.workoutCount)
+    .slice(0, 6);
+
+  const exerciseHighlights = [...highlightMap.values()]
+    .sort((left, right) => right.lastLoggedAt - left.lastLoggedAt)
+    .slice(0, 6);
+
+  return {
+    selectedDateKey,
+    selectedCheckin,
+    selectedLogs,
+    streak,
+    recentDays,
+    weeklySummary,
+    muscleGroupBreakdown,
+    exerciseHighlights,
+  };
 }
 
-function GymTracker() {
+function loadLocalTrackerStore(): LocalTrackerStore {
+  if (typeof window === "undefined") {
+    return { checkins: [], workoutLogs: [] };
+  }
+
+  const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
+  if (!raw) {
+    return { checkins: [], workoutLogs: [] };
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<LocalTrackerStore>;
+
+    return {
+      checkins: Array.isArray(parsed.checkins) ? parsed.checkins : [],
+      workoutLogs: Array.isArray(parsed.workoutLogs) ? parsed.workoutLogs : [],
+    };
+  } catch {
+    return { checkins: [], workoutLogs: [] };
+  }
+}
+
+function App({ convexReady }: AppProps) {
+  return convexReady ? <ConvexGymTracker /> : <LocalGymTracker />;
+}
+
+function ConvexGymTracker() {
   const [selectedDateKey, setSelectedDateKey] = useState(getDateKey());
   const [workoutForm, setWorkoutForm] = useState<WorkoutFormState>(
     createDefaultWorkoutState,
@@ -368,27 +523,6 @@ function GymTracker() {
   const saveCheckin = useMutation(anyApi.checkins.upsert);
   const createWorkoutLog = useMutation(anyApi.workoutLogs.create);
   const removeWorkoutLog = useMutation(anyApi.workoutLogs.remove);
-
-  const selectedSummary = useMemo(() => {
-    if (!dashboard) {
-      return null;
-    }
-
-    return (
-      dashboard.recentDays.find((day) => day.dateKey === dashboard.selectedDateKey) ?? {
-        dateKey: dashboard.selectedDateKey,
-        totalSets: 0,
-        totalReps: 0,
-        totalVolume: 0,
-        totalMinutes: 0,
-        workoutCount: 0,
-        completedWorkout: false,
-        energy: null,
-        mood: null,
-        bodyWeightKg: null,
-      }
-    );
-  }, [dashboard]);
 
   async function handleWorkoutSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -418,7 +552,6 @@ function GymTracker() {
       };
 
       await createWorkoutLog(args);
-
       setWorkoutForm((current) => ({
         ...createDefaultWorkoutState(),
         muscleGroup: current.muscleGroup,
@@ -447,7 +580,7 @@ function GymTracker() {
     }
   }
 
-  if (!dashboard || !selectedSummary) {
+  if (!dashboard) {
     return (
       <div className="page-shell">
         <section className="overview-band loading-band" style={bannerStyle}>
@@ -460,10 +593,196 @@ function GymTracker() {
     );
   }
 
+  return (
+    <DashboardLayout
+      mode="convex"
+      selectedDateKey={selectedDateKey}
+      setSelectedDateKey={setSelectedDateKey}
+      dashboard={dashboard}
+      workoutForm={workoutForm}
+      setWorkoutForm={setWorkoutForm}
+      workoutStatus={workoutStatus}
+      workoutPending={workoutPending}
+      onWorkoutSubmit={handleWorkoutSubmit}
+      onDeleteWorkout={handleDeleteWorkout}
+      onCheckinSave={saveCheckin as (args: SaveCheckinArgs) => Promise<unknown>}
+    />
+  );
+}
+
+function LocalGymTracker() {
+  const [selectedDateKey, setSelectedDateKey] = useState(getDateKey());
+  const [workoutForm, setWorkoutForm] = useState<WorkoutFormState>(
+    createDefaultWorkoutState,
+  );
+  const [workoutStatus, setWorkoutStatus] = useState<string | null>(null);
+  const [workoutPending, setWorkoutPending] = useState(false);
+  const [store, setStore] = useState<LocalTrackerStore>(loadLocalTrackerStore);
+
+  useEffect(() => {
+    window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(store));
+  }, [store]);
+
+  const dashboard = useMemo(
+    () => buildDashboardData(selectedDateKey, store.checkins, store.workoutLogs),
+    [selectedDateKey, store],
+  );
+
+  async function handleCheckinSave(args: SaveCheckinArgs) {
+    setStore((current) => {
+      const existing = current.checkins.find((checkin) => checkin.dateKey === args.dateKey);
+      const now = Date.now();
+      const nextRecord: CheckinRecord = {
+        _id: existing?._id ?? createLocalId("checkin"),
+        dateKey: args.dateKey,
+        sleepHours: args.sleepHours,
+        energy: args.energy,
+        mood: args.mood,
+        soreness: args.soreness,
+        completedWorkout: args.completedWorkout,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+        ...(args.bodyWeightKg !== undefined ? { bodyWeightKg: args.bodyWeightKg } : {}),
+        ...(args.hydrationLiters !== undefined
+          ? { hydrationLiters: args.hydrationLiters }
+          : {}),
+        ...(args.notes ? { notes: args.notes } : {}),
+      };
+
+      return {
+        ...current,
+        checkins: existing
+          ? current.checkins.map((checkin) =>
+              checkin.dateKey === args.dateKey ? nextRecord : checkin,
+            )
+          : [...current.checkins, nextRecord],
+      };
+    });
+
+    return null;
+  }
+
+  async function handleWorkoutSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setWorkoutPending(true);
+    setWorkoutStatus(null);
+
+    try {
+      const exercise = workoutForm.exercise.trim();
+      const weightKg = toOptionalNumber(workoutForm.weightKg);
+      const durationMinutes = toOptionalNumber(workoutForm.durationMinutes);
+      const notes = toOptionalString(workoutForm.notes);
+
+      if (!exercise) {
+        throw new Error("Exercise is required.");
+      }
+
+      const args: SaveWorkoutArgs = {
+        dateKey: selectedDateKey,
+        exercise,
+        muscleGroup: workoutForm.muscleGroup,
+        sets: toRequiredNumber(workoutForm.sets, "Sets"),
+        reps: toRequiredNumber(workoutForm.reps, "Reps"),
+        effort: workoutForm.effort,
+        ...(weightKg !== undefined ? { weightKg } : {}),
+        ...(durationMinutes !== undefined ? { durationMinutes } : {}),
+        ...(notes ? { notes } : {}),
+      };
+
+      setStore((current) => ({
+        ...current,
+        workoutLogs: [
+          ...current.workoutLogs,
+          {
+            _id: createLocalId("log"),
+            createdAt: Date.now(),
+            ...args,
+          },
+        ],
+      }));
+
+      setWorkoutForm((current) => ({
+        ...createDefaultWorkoutState(),
+        muscleGroup: current.muscleGroup,
+        effort: current.effort,
+      }));
+      setWorkoutStatus("Workout entry logged in this browser.");
+    } catch (error) {
+      setWorkoutStatus(
+        error instanceof Error ? error.message : "Unable to save the workout entry.",
+      );
+    } finally {
+      setWorkoutPending(false);
+    }
+  }
+
+  async function handleDeleteWorkout(logId: string) {
+    setStore((current) => ({
+      ...current,
+      workoutLogs: current.workoutLogs.filter((log) => log._id !== logId),
+    }));
+    setWorkoutStatus("Workout entry removed.");
+  }
+
+  return (
+    <DashboardLayout
+      mode="browser"
+      selectedDateKey={selectedDateKey}
+      setSelectedDateKey={setSelectedDateKey}
+      dashboard={dashboard}
+      workoutForm={workoutForm}
+      setWorkoutForm={setWorkoutForm}
+      workoutStatus={workoutStatus}
+      workoutPending={workoutPending}
+      onWorkoutSubmit={handleWorkoutSubmit}
+      onDeleteWorkout={handleDeleteWorkout}
+      onCheckinSave={handleCheckinSave}
+    />
+  );
+}
+
+function DashboardLayout({
+  mode,
+  selectedDateKey,
+  setSelectedDateKey,
+  dashboard,
+  workoutForm,
+  setWorkoutForm,
+  workoutStatus,
+  workoutPending,
+  onWorkoutSubmit,
+  onDeleteWorkout,
+  onCheckinSave,
+}: DashboardLayoutProps) {
+  const selectedSummary =
+    dashboard.recentDays.find((day) => day.dateKey === dashboard.selectedDateKey) ?? {
+      dateKey: dashboard.selectedDateKey,
+      totalSets: 0,
+      totalReps: 0,
+      totalVolume: 0,
+      totalMinutes: 0,
+      workoutCount: 0,
+      completedWorkout: false,
+      energy: null,
+      mood: null,
+      bodyWeightKg: null,
+    };
+
   const toneMessage =
     selectedSummary.totalSets > 0
       ? "Training volume is on the board."
       : "No workout logged yet for this day.";
+
+  const modeMeta =
+    mode === "convex"
+      ? {
+          label: "Convex live sync",
+          hint: "Data is stored in the configured Convex backend.",
+        }
+      : {
+          label: "Browser storage mode",
+          hint: "This deployment stays usable without a public backend.",
+        };
 
   return (
     <div className="page-shell">
@@ -480,7 +799,7 @@ function GymTracker() {
 
           <div className="overview-actions">
             <label className="field">
-              <span className="field-label">Date</span>
+              <span className="field-label field-label-light">Date</span>
               <input
                 className="date-picker"
                 type="date"
@@ -495,6 +814,10 @@ function GymTracker() {
             >
               Jump to today
             </button>
+            <div className="mode-panel">
+              <strong>{modeMeta.label}</strong>
+              <p>{modeMeta.hint}</p>
+            </div>
           </div>
         </div>
 
@@ -525,10 +848,10 @@ function GymTracker() {
       <main className="section-inner app-layout">
         <div className="primary-column">
           <CheckinPanel
-            key={`${selectedDateKey}:${dashboard.selectedCheckin?._id ?? "empty"}`}
+            key={`${mode}:${selectedDateKey}:${dashboard.selectedCheckin?._id ?? "empty"}`}
             selectedDateKey={selectedDateKey}
             selectedCheckin={dashboard.selectedCheckin}
-            onSave={saveCheckin as (args: SaveCheckinArgs) => Promise<unknown>}
+            onSave={onCheckinSave}
           />
 
           <section className="tool-panel">
@@ -540,7 +863,7 @@ function GymTracker() {
               <span className="status-text">{workoutStatus}</span>
             </div>
 
-            <form className="stacked-form" onSubmit={handleWorkoutSubmit}>
+            <form className="stacked-form" onSubmit={onWorkoutSubmit}>
               <div className="field-grid two-up">
                 <label className="field">
                   <span className="field-label">Exercise</span>
@@ -694,9 +1017,7 @@ function GymTracker() {
 
             <div className="log-list">
               {dashboard.selectedLogs.length === 0 ? (
-                <div className="empty-state">
-                  No exercise entries for this date yet.
-                </div>
+                <div className="empty-state">No exercise entries for this date yet.</div>
               ) : (
                 dashboard.selectedLogs.map((log) => (
                   <article className="log-row" key={log._id}>
@@ -717,7 +1038,7 @@ function GymTracker() {
                     <button
                       className="ghost-button"
                       type="button"
-                      onClick={() => handleDeleteWorkout(log._id)}
+                      onClick={() => void onDeleteWorkout(log._id)}
                     >
                       Remove
                     </button>
